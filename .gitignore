@@ -1,0 +1,12 @@
+# log files
+*.smcl
+*.log
+
+** common data files used in Stata
+** Not used in this repository. All data aggregated
+*.dta
+*.xls
+*.xlsx
+*.csv
+*.txt
+*.dct
