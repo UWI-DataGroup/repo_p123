@@ -179,7 +179,7 @@ append using `four_aa'
 merge m:1 sex agec using `five'
 
 
-** GRAPHIC
+/** GRAPHIC
 ** MEN -- BMI-for-age
 #delimit ;
 graph twoway  (rarea sd2neg sd1 agec if sex==1, sort fcolor("26 152 80%30") lw(none) )
@@ -263,7 +263,7 @@ graph twoway  (rarea sd2neg sd1 agec if sex==2, sort fcolor("26 152 80%30") lw(n
 							name(women)
 							;
 #delimit cr
-
+*/
 ** Save final dataset
 use `three_ss', replace
 drop d1 d2 d3 n
@@ -273,4 +273,135 @@ label var zbmi_who "WHO bmi-for-age standard"
 label var zbmi_us "US bmi-for-age standard"
 label var zbmi_uk "UK bmi-for-age standard"
 label data "Jamaican Cohort childhood BMI"
+
+** ----------------------------------------------------
+** We want to change the structure of the dataset. It currently has several rows for each
+** participant, with each row representing a different point in time. We want one row per participant
+** with the assessments at different time points as columns.
+** ----------------------------------------------------
+
+** The reshape command does not work with non-integers, so the agec variable has to be converted to an integer
+gen ageci = int(agec)
+drop agec agey agem ht wt
+reshape wide bmi zbmi_who zbmi_us zbmi_uk, i(idno) j(ageci)
+order sex geno, after(idno)
 save "`datapath'\scdgrowth_001", replace
+
+* ----------------------------------------------------
+** 30-AUG-2018
+** Preparation of the birthlong dataset. This contains birthweight, along with several health outcomes
+** from later in life, including blood pressure, and renal-related outcomes over 3 time periods (1997, 2006, 2012).
+** We want to end up with one row per participant for each outcome variable
+** ----------------------------------------------------
+use "`datapath'\birthlong", clear
+rename scuid idno
+
+tempfile sbp dbp gfr_ckdepi egfr_shg right left
+
+*** SBP outcome
+preserve
+  keep idno bwt age sbp time
+  drop if sbp==.
+  tab time
+  gen otype=.
+  replace otype=1 if time==1996
+  replace otype=2 if time==2006
+  replace otype=3 if time==2012
+  save `sbp',
+restore
+
+** DBP outcome
+preserve
+	keep idno age dbp time
+	drop if dbp==.
+	tab time
+	gen otype=.
+	replace otype=4 if time==1996
+	replace otype=5 if time==2006
+	replace otype=6 if time==2012
+	save `dbp'
+restore
+
+** gfr_ckdepi outcome
+preserve
+	keep idno age gfr_ckdepi time
+	drop if gfr_ckdepi==.
+	tab time
+	gen otype=.
+	replace otype=7 if time==1996
+	replace otype=8 if time==2006
+	replace otype=9 if time==2012
+	save `gfr_ckdepi'
+restore
+
+** egfr_shg outcome
+preserve
+	keep idno age egfr_shg time
+	drop if egfr_shg==.
+	tab time
+	gen otype=.
+	replace otype=10 if time==1996
+	replace otype=11 if time==2006
+	replace otype=12 if time==2012
+	save `egfr_shg'
+restore
+
+** right kidney size outcome
+preserve
+	keep idno age right time
+	drop if right==.
+	tab time
+	gen otype=.
+	replace otype=13 if time==1996
+	replace otype=14 if time==1997
+	replace otype=15 if time==2000
+	replace otype=16 if time==2003
+	save `right'
+restore
+
+*left kidney size outcome
+preserve
+	keep idno age left time
+	drop if left==.
+	tab time
+	gen otype=.
+	replace otype=17 if time==1996
+	replace otype=18 if time==1997
+	replace otype=19 if time==2000
+	replace otype=20 if time==2003
+	save `left'
+restore
+
+*combine outcome datasets
+use `sbp', clear
+append using `dbp'
+append using `gfr_ckdepi'
+append using `egfr_shg'
+append using `right'
+append using `left'
+sort idno time otype
+
+**Get rid of individual outcome variables and use a combination of the type of outcome (otype) and outcome value (ovalue)
+order otype, after(time)
+gen ovalue=.
+replace ovalue=sbp if sbp!=.
+replace ovalue=dbp if dbp!=.
+replace ovalue=gfr_ckdepi if gfr_ckdepi!=.
+replace ovalue=egfr_shg if egfr_shg!=.
+replace ovalue=right if right!=.
+replace ovalue=left if left!=.
+label define otype 1 "SBP(1996)" 2 "SBP(2006)" 3 "SBP(2012)" 4 "DBP(1996)" 5 "DBP(2006)" 6 "DBP(2012)" ///
+           7 "GFR-CKDEPI(1996)" 8 "GFR-CKDEPI(2006)" 9 "GFR-CKDEPI(2012)" 10 "EGFR-SHG(1996)" 11 "EGFR-SHG(2006)" 12 "EGFR-SHG(2012)" ///
+				   13 "Right kidney(1996)" 14 "Right kidney(1997)" 15 "Right kidney(2000)" 16 "Right kidney(2003)" 17 "Left kidney(1996)" 18 "Left kidney(1997)" 19 "Left kidney(2000)" 20 "Left kidney(2003)"
+label values otype otype
+order ovalue, after(otype)
+keep idno time otype ovalue
+
+** Merge with early life growth dataset
+merge m:1 idno using "`datapath'\scdgrowth_001"
+
+
+** ----------------------------------------------------
+** 03-SEP-2018
+** Stopping here to confirm that dataset is ready for regressions
+** ----------------------------------------------------
